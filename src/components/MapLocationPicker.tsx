@@ -1,18 +1,18 @@
-import { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
-import { Icon, LatLngExpression } from 'leaflet';
+import { useEffect, useRef, useState } from 'react';
+import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { MapPin, Navigation } from 'lucide-react';
+import { toast } from 'sonner';
 
 // Fix for default marker icon
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 
-delete (Icon.Default.prototype as any)._getIconUrl;
-Icon.Default.mergeOptions({
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
   iconUrl: markerIcon,
   iconRetinaUrl: markerIcon2x,
   shadowUrl: markerShadow,
@@ -24,32 +24,56 @@ interface MapLocationPickerProps {
   initialLng?: number;
 }
 
-function LocationMarker({ onLocationSelect }: { onLocationSelect: (lat: number, lng: number) => void }) {
-  const [position, setPosition] = useState<LatLngExpression | null>(null);
-
-  useMapEvents({
-    click(e) {
-      const newPos: LatLngExpression = [e.latlng.lat, e.latlng.lng];
-      setPosition(newPos);
-      onLocationSelect(e.latlng.lat, e.latlng.lng);
-    },
-  });
-
-  return position === null ? null : <Marker position={position} />;
-}
-
-function MapUpdater({ center }: { center: LatLngExpression }) {
-  const map = useMap();
-  
-  useEffect(() => {
-    map.setView(center, map.getZoom());
-  }, [center, map]);
-
-  return null;
-}
-
 export const MapLocationPicker = ({ onLocationSelect, initialLat = 13.0878, initialLng = 80.2085 }: MapLocationPickerProps) => {
-  const [currentPosition, setCurrentPosition] = useState<LatLngExpression>([initialLat, initialLng]);
+  const mapRef = useRef<L.Map | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [currentPosition, setCurrentPosition] = useState<[number, number]>([initialLat, initialLng]);
+
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
+
+    // Initialize map
+    const map = L.map(containerRef.current).setView(currentPosition, 13);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(map);
+
+    // Add click handler
+    map.on('click', (e: L.LeafletMouseEvent) => {
+      const { lat, lng } = e.latlng;
+      
+      // Remove existing marker if any
+      if (markerRef.current) {
+        markerRef.current.remove();
+      }
+
+      // Add new marker
+      markerRef.current = L.marker([lat, lng]).addTo(map);
+      
+      setCurrentPosition([lat, lng]);
+      onLocationSelect(lat, lng);
+      toast.success('Location selected!');
+    });
+
+    mapRef.current = map;
+
+    // Cleanup
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+    };
+  }, []);
+
+  // Update map view when position changes
+  useEffect(() => {
+    if (mapRef.current) {
+      mapRef.current.setView(currentPosition, 13);
+    }
+  }, [currentPosition]);
 
   const handleGetCurrentLocation = () => {
     if (navigator.geolocation) {
@@ -57,14 +81,31 @@ export const MapLocationPicker = ({ onLocationSelect, initialLat = 13.0878, init
         (position) => {
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
-          const newPos: LatLngExpression = [lat, lng];
+          const newPos: [number, number] = [lat, lng];
+          
           setCurrentPosition(newPos);
           onLocationSelect(lat, lng);
+          
+          // Remove existing marker if any
+          if (markerRef.current) {
+            markerRef.current.remove();
+          }
+          
+          // Add marker at current location
+          if (mapRef.current) {
+            markerRef.current = L.marker(newPos).addTo(mapRef.current);
+            mapRef.current.setView(newPos, 15);
+          }
+          
+          toast.success('Current location captured!');
         },
         (error) => {
           console.error('Error getting location:', error);
+          toast.error('Failed to get current location');
         }
       );
+    } else {
+      toast.error('Geolocation is not supported by your browser');
     }
   };
 
@@ -81,21 +122,11 @@ export const MapLocationPicker = ({ onLocationSelect, initialLat = 13.0878, init
         </Button>
       </div>
       
-      <div className="h-[400px] w-full rounded-lg overflow-hidden border">
-        <MapContainer
-          center={currentPosition}
-          zoom={13}
-          style={{ height: '100%', width: '100%' }}
-          scrollWheelZoom={true}
-        >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-          <MapUpdater center={currentPosition} />
-          <LocationMarker onLocationSelect={onLocationSelect} />
-        </MapContainer>
-      </div>
+      <div 
+        ref={containerRef} 
+        className="h-[400px] w-full rounded-lg overflow-hidden border"
+        style={{ zIndex: 0 }}
+      />
       
       <p className="text-xs text-muted-foreground mt-2">
         Click on the map to select your delivery location
