@@ -10,8 +10,24 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { MenuImageUpload } from '@/components/MenuImageUpload';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Plus } from 'lucide-react';
 
 type OrderStatus = 'placed' | 'preparing' | 'out_for_delivery' | 'delivered' | 'cancelled';
+
+interface MenuItem {
+  id: string;
+  title: string;
+  description: string | null;
+  price: number;
+  category: string;
+  image_url: string | null;
+  is_available: boolean | null;
+}
 
 interface Order {
   id: string;
@@ -42,8 +58,16 @@ const statusColors = {
 
 export default function Admin() {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [showAddMenuItem, setShowAddMenuItem] = useState(false);
+  const [newMenuItem, setNewMenuItem] = useState({
+    title: '',
+    description: '',
+    price: '',
+    category: '',
+  });
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -76,9 +100,24 @@ export default function Admin() {
 
       setIsAdmin(true);
       fetchOrders();
+      fetchMenuItems();
     } catch (error) {
       console.error('Error checking admin status:', error);
       navigate('/');
+    }
+  };
+
+  const fetchMenuItems = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('menu_items')
+        .select('*')
+        .order('category', { ascending: true });
+
+      if (error) throw error;
+      setMenuItems(data || []);
+    } catch (error) {
+      console.error('Error fetching menu items:', error);
     }
   };
 
@@ -132,6 +171,50 @@ export default function Admin() {
     }
   };
 
+  const handleAddMenuItem = async () => {
+    if (!newMenuItem.title || !newMenuItem.price || !newMenuItem.category) {
+      toast.error('Please fill all required fields');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('menu_items')
+        .insert({
+          title: newMenuItem.title,
+          description: newMenuItem.description || null,
+          price: parseFloat(newMenuItem.price),
+          category: newMenuItem.category,
+          is_available: true,
+        });
+
+      if (error) throw error;
+
+      toast.success('Menu item added successfully');
+      setShowAddMenuItem(false);
+      setNewMenuItem({ title: '', description: '', price: '', category: '' });
+      fetchMenuItems();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to add menu item');
+    }
+  };
+
+  const toggleMenuItemAvailability = async (itemId: string, currentStatus: boolean | null) => {
+    try {
+      const { error } = await supabase
+        .from('menu_items')
+        .update({ is_available: !currentStatus })
+        .eq('id', itemId);
+
+      if (error) throw error;
+
+      toast.success('Menu item updated');
+      fetchMenuItems();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update menu item');
+    }
+  };
+
   if (!isAdmin) {
     return (
       <div className="min-h-screen bg-background">
@@ -156,6 +239,7 @@ export default function Admin() {
           <TabsList>
             <TabsTrigger value="active">Active Orders ({activeOrders.length})</TabsTrigger>
             <TabsTrigger value="completed">Completed ({completedOrders.length})</TabsTrigger>
+            <TabsTrigger value="menu">Menu Items ({menuItems.length})</TabsTrigger>
           </TabsList>
 
           <TabsContent value="active" className="space-y-4 mt-6">
@@ -238,6 +322,93 @@ export default function Admin() {
                 </Card>
               ))
             )}
+          </TabsContent>
+
+          <TabsContent value="menu" className="space-y-4 mt-6">
+            <div className="flex justify-end mb-4">
+              <Dialog open={showAddMenuItem} onOpenChange={setShowAddMenuItem}>
+                <DialogTrigger asChild>
+                  <Button>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Menu Item
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Add New Menu Item</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="title">Title *</Label>
+                      <Input
+                        id="title"
+                        value={newMenuItem.title}
+                        onChange={(e) => setNewMenuItem({ ...newMenuItem, title: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="description">Description</Label>
+                      <Textarea
+                        id="description"
+                        value={newMenuItem.description}
+                        onChange={(e) => setNewMenuItem({ ...newMenuItem, description: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="price">Price (₹) *</Label>
+                      <Input
+                        id="price"
+                        type="number"
+                        step="0.01"
+                        value={newMenuItem.price}
+                        onChange={(e) => setNewMenuItem({ ...newMenuItem, price: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="category">Category *</Label>
+                      <Input
+                        id="category"
+                        value={newMenuItem.category}
+                        onChange={(e) => setNewMenuItem({ ...newMenuItem, category: e.target.value })}
+                        placeholder="e.g., Appetizers, Main Course, Desserts"
+                      />
+                    </div>
+                    <Button onClick={handleAddMenuItem} className="w-full">
+                      Add Item
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              {menuItems.map((item) => (
+                <Card key={item.id} className="p-4">
+                  <div className="space-y-4">
+                    <MenuImageUpload
+                      menuItemId={item.id}
+                      currentImageUrl={item.image_url || undefined}
+                      onImageUploaded={fetchMenuItems}
+                    />
+                    
+                    <div>
+                      <h3 className="font-semibold text-lg">{item.title}</h3>
+                      <p className="text-sm text-muted-foreground">{item.description}</p>
+                      <p className="text-lg font-bold text-primary mt-2">₹{item.price}</p>
+                      <Badge variant="outline" className="mt-1">{item.category}</Badge>
+                    </div>
+
+                    <Button
+                      onClick={() => toggleMenuItemAvailability(item.id, item.is_available)}
+                      variant={item.is_available ? 'default' : 'secondary'}
+                      className="w-full"
+                    >
+                      {item.is_available ? 'Available' : 'Unavailable'}
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+            </div>
           </TabsContent>
         </Tabs>
       </div>
