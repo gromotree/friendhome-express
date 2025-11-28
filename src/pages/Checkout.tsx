@@ -12,6 +12,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { MapPin } from 'lucide-react';
 import { z } from 'zod';
+import { MapLocationPicker } from '@/components/MapLocationPicker';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 
 // FriendHome location (Anna Nagar)
 const RESTAURANT_LAT = 13.0878;
@@ -41,12 +43,14 @@ export default function Checkout() {
   const { items, total, clearCart } = useCart();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { enableNotifications, isSubscribed } = usePushNotifications();
   const [loading, setLoading] = useState(false);
   const [label, setLabel] = useState('');
   const [addressLine, setAddressLine] = useState('');
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
   const [notes, setNotes] = useState('');
+  const [showMap, setShowMap] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -57,7 +61,12 @@ export default function Checkout() {
       navigate('/');
       return;
     }
-  }, [user, items, navigate]);
+    
+    // Enable notifications if not already subscribed
+    if (!isSubscribed) {
+      enableNotifications();
+    }
+  }, [user, items, navigate, isSubscribed, enableNotifications]);
 
   const handleGetLocation = () => {
     if (navigator.geolocation) {
@@ -207,6 +216,27 @@ export default function Checkout() {
                 <MapPin className="mr-2 h-4 w-4" />
                 Get Current Location
               </Button>
+              
+              <Button 
+                onClick={() => setShowMap(!showMap)} 
+                variant="secondary" 
+                className="w-full"
+              >
+                {showMap ? 'Hide Map' : 'Choose on Map'}
+              </Button>
+              
+              {showMap && (
+                <MapLocationPicker
+                  onLocationSelect={(lat, lng) => {
+                    setLatitude(lat);
+                    setLongitude(lng);
+                    toast.success('Location selected!');
+                  }}
+                  initialLat={latitude || 13.0878}
+                  initialLng={longitude || 80.2085}
+                />
+              )}
+              
               {latitude && longitude && (
                 <p className="text-sm text-muted-foreground">
                   Location: {latitude.toFixed(4)}, {longitude.toFixed(4)}
