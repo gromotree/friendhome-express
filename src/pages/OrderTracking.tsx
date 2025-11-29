@@ -51,7 +51,8 @@ export default function OrderTracking() {
     }
     if (id) {
       fetchOrder();
-      subscribeToUpdates();
+      const cleanup = subscribeToUpdates();
+      return cleanup;
     }
   }, [user, id, navigate]);
 
