@@ -29,6 +29,9 @@ export const MapLocationPicker = ({ onLocationSelect, initialLat = 13.0878, init
   const markerRef = useRef<L.Marker | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [currentPosition, setCurrentPosition] = useState<[number, number]>([initialLat, initialLng]);
+  
+  // Restaurant location (FriendHome)
+  const restaurantLocation: [number, number] = [13.0878, 80.2085];
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -39,6 +42,26 @@ export const MapLocationPicker = ({ onLocationSelect, initialLat = 13.0878, init
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(map);
+
+    // Add 10km delivery radius circle
+    L.circle(restaurantLocation, {
+      radius: 10000, // 10km in meters
+      color: 'hsl(var(--primary))',
+      fillColor: 'hsl(var(--primary))',
+      fillOpacity: 0.1,
+      weight: 2,
+    }).addTo(map);
+
+    // Add marker at restaurant location
+    L.marker(restaurantLocation, {
+      icon: L.divIcon({
+        className: 'restaurant-marker',
+        html: '<div style="background: hsl(var(--primary)); width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+        iconSize: [12, 12],
+        iconAnchor: [6, 6],
+      })
+    }).addTo(map).bindPopup('FriendHome Restaurant');
+
 
     // Add click handler
     map.on('click', (e: L.LeafletMouseEvent) => {
